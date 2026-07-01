@@ -134,15 +134,6 @@ panel, CLI, and shortcuts are all just views/actions over it.
 
 ---
 
-## Sharing it
-
-- The repo is safe to make **public** — it contains no secrets and no personal data
-  (the live `inbox.db`, the venv, and the last-notified pointer are `.gitignore`d).
-- To share: send someone the repo URL; they run the three install commands above.
-- To make it public on GitHub: repo **Settings ▸ General ▸ Change visibility ▸ Public**.
-
----
-
 ## Requirements recap
 macOS · iTerm2 · Homebrew · Python 3. Two permissions (Accessibility for skhd; Automation
 for iTerm2 + System Events). No network, no cloud, no telemetry.
