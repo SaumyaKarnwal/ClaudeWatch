@@ -34,9 +34,13 @@ FOCUS = os.path.join(ROOT, "hooks", "focus_session.py")
 RED, GREEN, GRAY = "#FF3B30", "#34C759", "#8E8E93"
 PAD, HEADER_H, ROW_H, WIDTH = 10, 34, 34, 360
 
-SESSIONS = []   # list of (project, state, updated_at, iterm_session_id)
+SESSIONS = []   # list of (session_id, project, state, updated_at, iterm_session_id)
 SELECTED = 0
 NOW = 0
+WIN = None      # window + view + top-anchor, set in main() so we can rebuild on delete
+VIEW = None
+TOP = 0
+LEFT = 0
 
 
 def color(hexstr, alpha=1.0):
@@ -60,7 +64,7 @@ def load_sessions():
     try:
         return conn.execute(
             """
-            SELECT project, state, updated_at, iterm_session_id FROM sessions
+            SELECT session_id, project, state, updated_at, iterm_session_id FROM sessions
             ORDER BY CASE state WHEN 'needs_input' THEN 0 ELSE 1 END, updated_at ASC
             """
         ).fetchall()
@@ -70,10 +74,38 @@ def load_sessions():
 
 def jump(idx):
     if 0 <= idx < len(SESSIONS):
-        iterm = SESSIONS[idx][3]
+        iterm = SESSIONS[idx][4]
         if iterm:
             subprocess.Popen(["/usr/bin/python3", FOCUS, iterm])
     NSApplication.sharedApplication().terminate_(None)
+
+
+def delete_session(idx):
+    """Dismiss a session from the inbox, then rebuild the panel in place."""
+    global SELECTED
+    if not (0 <= idx < len(SESSIONS)):
+        return
+    sid = SESSIONS[idx][0]
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
+    try:
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (sid,))
+        conn.commit()
+    finally:
+        conn.close()
+    rebuild()
+
+
+def rebuild():
+    global SESSIONS, SELECTED
+    SESSIONS = load_sessions()
+    if SELECTED >= len(SESSIONS):
+        SELECTED = max(0, len(SESSIONS) - 1)
+    n = max(1, len(SESSIONS))
+    h = HEADER_H + n * ROW_H + PAD
+    # keep the top edge anchored while the height shrinks
+    WIN.setFrame_display_(NSMakeRect(LEFT, TOP - h, WIDTH, h), True)
+    VIEW.setFrame_(NSMakeRect(0, 0, WIDTH, h))
+    VIEW.setNeedsDisplay_(True)
 
 
 def draw_text(s, x, y, w, h, size, col, bold=False):
@@ -101,7 +133,7 @@ class PanelView(NSView):
                       12, color(GRAY))
             return
 
-        for i, (project, state, updated_at, _) in enumerate(SESSIONS):
+        for i, (_, project, state, updated_at, _iterm) in enumerate(SESSIONS):
             row_y = H - HEADER_H - (i + 1) * ROW_H
             if i == SELECTED:
                 hl = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
@@ -112,8 +144,13 @@ class PanelView(NSView):
             glyph = "●" if state == "needs_input" else "✓"
             ty = row_y + (ROW_H - 18) / 2
             draw_text(glyph, PAD + 10, ty, 16, 18, 13, color(accent))
-            draw_text(project, PAD + 32, ty, WIDTH - 110, 18, 12, NSColor.whiteColor())
-            draw_text(age(NOW - updated_at), WIDTH - 64, ty, 50, 18, 11, color(GRAY))
+            draw_text(project, PAD + 32, ty, WIDTH - 150, 18, 12, NSColor.whiteColor())
+            draw_text(age(NOW - updated_at), WIDTH - 100, ty, 44, 18, 11, color(GRAY))
+            # dismiss affordance on the right
+            draw_text("✕", WIDTH - 28, ty, 18, 18, 12, color(GRAY))
+
+    # rightmost strip of a row is the ✕ (delete) hit zone
+    DELETE_ZONE = 40
 
     def _row_at(self, point):
         H = self.bounds().size.height
@@ -123,7 +160,11 @@ class PanelView(NSView):
     def mouseDown_(self, event):
         p = self.convertPoint_fromView_(event.locationInWindow(), None)
         idx = self._row_at(p)
-        if idx >= 0:
+        if idx < 0:
+            return
+        if p.x >= WIDTH - self.DELETE_ZONE:   # clicked the ✕
+            delete_session(idx)
+        else:
             jump(idx)
 
     def keyDown_(self, event):
@@ -131,8 +172,10 @@ class PanelView(NSView):
         code = event.keyCode()
         if code == 53:  # esc
             NSApplication.sharedApplication().terminate_(None)
-        elif code == 36 and SESSIONS:  # return
+        elif code == 36 and SESSIONS:  # return -> jump
             jump(SELECTED)
+        elif code in (7, 51) and SESSIONS:  # 'x' key or delete/backspace -> dismiss selected
+            delete_session(SELECTED)
         elif code == 126 and SESSIONS:  # up
             SELECTED = max(0, SELECTED - 1)
             self.setNeedsDisplay_(True)
@@ -147,7 +190,7 @@ class Delegate(NSObject):
 
 
 def main():
-    global SESSIONS, NOW
+    global SESSIONS, NOW, WIN, VIEW, TOP, LEFT
     try:
         with open("/tmp/claude_inbox_panel.log", "a") as f:
             f.write(f"panel fired {int(time.time())}\n")
@@ -181,6 +224,8 @@ def main():
     view.layer().setBackgroundColor_(color("#1c1c1e", 0.97).CGColor())
     view.layer().setCornerRadius_(14.0)
     win.setContentView_(view)
+
+    WIN, VIEW, LEFT, TOP = win, view, x, y + H  # top edge stays fixed on rebuild
 
     delegate = Delegate.alloc().init()
     win.setDelegate_(delegate)
