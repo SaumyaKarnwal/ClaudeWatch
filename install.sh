@@ -59,7 +59,10 @@ for event, arg in events.items():
     arr = hooks.setdefault(event, [])
     # drop any prior ClaudeWatch entry (idempotent / path-refresh), keep the rest
     arr = [e for e in arr if "record_event.py" not in json.dumps(e)]
-    arr.append({"hooks": [{"type": "command", "command": cmd}]})
+    entry = {"hooks": [{"type": "command", "command": cmd}]}
+    if event == "Notification":
+        entry = {"matcher": "permission_prompt", **entry}  # only permission prompts -> needs-input; ignore idle_prompt
+    arr.append(entry)
     hooks[event] = arr
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2); f.write("\n")
