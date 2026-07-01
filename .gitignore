@@ -1,0 +1,11 @@
+# Python virtualenv (PyObjC lives here; recreate with setup)
+.venv/
+
+# runtime state — the live session store
+inbox.db
+inbox.db-wal
+inbox.db-shm
+
+__pycache__/
+*.pyc
+.DS_Store

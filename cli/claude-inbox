@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Print the current session inbox -- a quick way to watch the engine work.
+
+Usage:
+    claude-inbox          # one-shot table of what's pending
+    claude-inbox --watch  # refresh every 2s (Ctrl-C to stop)
+"""
+
+import os
+import sqlite3
+import sys
+import time
+
+DB_PATH = os.path.expanduser("~/projects/claude-session-inbox/inbox.db")
+
+STATE_LABEL = {
+    "needs_input": "\033[31m● needs input\033[0m",  # red
+    "done": "\033[32m✓ done\033[0m",  # green
+}
+
+
+def age(seconds_ago):
+    if seconds_ago < 60:
+        return f"{seconds_ago}s"
+    if seconds_ago < 3600:
+        return f"{seconds_ago // 60}m"
+    return f"{seconds_ago // 3600}h"
+
+
+def render():
+    if not os.path.exists(DB_PATH):
+        print("(no inbox yet -- no sessions have reported in)")
+        return
+
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT project, state, updated_at
+            FROM sessions
+            -- needs_input first, then oldest-waiting at the top of each group
+            ORDER BY CASE state WHEN 'needs_input' THEN 0 ELSE 1 END, updated_at ASC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        print("Inbox empty — nothing needs you. ✨")
+        return
+
+    now = int(time.time())
+    waiting = sum(1 for _, state, _ in rows if state == "needs_input")
+    print(f"\033[1mClaude Session Inbox\033[0m  ({waiting} waiting on you)\n")
+    for project, state, updated_at in rows:
+        label = STATE_LABEL.get(state, state)
+        print(f"  {label:<28} {project:<24} {age(now - updated_at):>5} ago")
+    print()
+
+
+def main():
+    if "--watch" in sys.argv:
+        try:
+            while True:
+                os.system("clear")
+                render()
+                time.sleep(2)
+        except KeyboardInterrupt:
+            pass
+    else:
+        render()
+
+
+if __name__ == "__main__":
+    main()
