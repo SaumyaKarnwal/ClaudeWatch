@@ -164,7 +164,7 @@ class Controller(NSObject):
         subprocess.Popen([PY, ADMIN, "clear-finished"])
 
     def editSettings_(self, s):
-        subprocess.Popen([PY, APPLY, "open"])
+        subprocess.Popen([VENV_PY, os.path.join(ROOT, "hooks", "settings.py")])
 
     def quit_(self, s):
         NSApplication.sharedApplication().terminate_(None)

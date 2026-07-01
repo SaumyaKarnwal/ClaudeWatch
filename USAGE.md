@@ -52,43 +52,29 @@ looking at that session, no toast fires (it would just be noise).
 
 ---
 
-## Configuring — `config.json`
+## Settings (the easy way)
 
-All settings live in one file: **`config.json`** (repo root). Two kinds of settings,
-and they take effect differently:
+**Right-click the menu-bar badge ▸ "Edit Settings…"** to open the Settings window — no
+files, no syntax:
 
-### Settings that apply immediately (no extra step)
-Edit `config.json` and the next event uses the new value:
+- **Keyboard shortcuts** — click **Record** on a row, then press the combo you want. It's
+  saved and goes live when you close the window. If you press something macOS already
+  owns (e.g. ⌘\`), a red ⚠ warning appears and it isn't saved — just pick another.
+- **Notifications** — checkboxes: notify on needs-input, notify on finished, and stay
+  silent for the session you're viewing.
+- **Sounds** — dropdowns to pick the needs-input and finished sounds (or None).
 
-| Key | Meaning |
-|---|---|
-| `notify_on_needs_input` | `true`/`false` — toast when a session needs input |
-| `notify_on_done` | `true`/`false` — toast when a session finishes |
-| `suppress_when_focused` | `true` — stay silent for the session you're viewing |
-| `sound_needs_input` | macOS sound name (e.g. `"Ping"`, `"Glass"`) or `""` for silent |
-| `sound_done` | same, for the finished toast |
+Notification changes apply instantly. Shortcuts go live when you close the window —
+while it's open, global hotkeys are paused so your keypress is *recorded* rather than
+triggering an existing shortcut.
 
-### Settings that need an "apply" step
-The **shortcuts** are compiled into `~/.skhdrc`, so after changing them you must apply:
-
-| Key | Meaning |
-|---|---|
-| `hotkey` | cycle waiting sessions |
-| `panel_hotkey` | open the inbox panel |
-| `notify_hotkey` | jump to the current notification's session |
-
-**To change a shortcut:**
-1. Edit its value in `config.json` (skhd syntax — see below).
-2. Run `python3 hooks/apply_config.py` **— or** menu-bar ▸ Settings ▸ **Apply / reload**.
-
-### skhd shortcut syntax
-`modifier + modifier - key`, e.g.:
-- `alt - 0x32` → ⌥`  (backtick is keycode `0x32`)
-- `cmd + ctrl - n` → ⌘⌃N
-- `alt - j` → ⌥J
-
-Modifiers: `cmd`, `ctrl`, `alt` (Option), `shift`, `fn`. Use a letter, or `0x<keycode>`
-for punctuation. Avoid combos macOS already owns (e.g. ⌘\` cycles windows).
+### Editing `config.json` directly (optional)
+Everything above is stored in `config.json` if you prefer to edit by hand. Notification
+keys (`notify_on_needs_input`, `notify_on_done`, `suppress_when_focused`,
+`sound_needs_input`, `sound_done`) apply on the next event. Shortcut keys (`hotkey`,
+`panel_hotkey`, `notify_hotkey`) use skhd syntax — `modifier + modifier - key`, e.g.
+`alt - 0x32` (⌥\`), `cmd + ctrl - n` (⌘⌃N) — and need `python3 hooks/apply_config.py`
+to take effect.
 
 ---
 
