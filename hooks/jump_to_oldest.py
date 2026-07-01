@@ -12,7 +12,7 @@ import os
 import subprocess
 import sqlite3
 
-ROOT = os.path.expanduser("~/projects/claude-session-inbox")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(ROOT, "inbox.db")
 FOCUS = os.path.join(ROOT, "hooks", "focus_session.py")
 

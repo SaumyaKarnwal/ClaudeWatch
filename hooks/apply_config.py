@@ -20,7 +20,7 @@ import re
 import subprocess
 import sys
 
-ROOT = os.path.expanduser("~/projects/claude-session-inbox")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "config.json")
 SKHDRC = os.path.expanduser("~/.skhdrc")
 PY = "/usr/bin/python3"

@@ -27,7 +27,7 @@ from AppKit import (
 )
 from Foundation import NSObject
 
-ROOT = os.path.expanduser("~/projects/claude-session-inbox")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(ROOT, "inbox.db")
 PANEL = os.path.join(ROOT, "hooks", "panel.py")
 ADMIN = os.path.join(ROOT, "hooks", "inbox_admin.py")
@@ -37,6 +37,7 @@ PY = "/usr/bin/python3"
 
 DONE_TTL = 30 * 60
 NEEDS_TTL = 8 * 60 * 60
+TICK = 0  # refresh counter; the (expensive) iTerm2 prune runs only every Nth tick
 
 LIST_LIVE_GUIDS = '''
 set ids to {}
@@ -63,17 +64,25 @@ def live_guids():
     return {ln.strip() for ln in out.splitlines() if ln.strip()}
 
 
-def prune(conn):
+def expire_by_time(conn):
+    """Cheap, pure-SQL zombie expiry. Safe to run every refresh."""
     now = int(time.time())
     conn.execute("DELETE FROM sessions WHERE state='done' AND updated_at < ?", (now - DONE_TTL,))
     conn.execute("DELETE FROM sessions WHERE state='needs_input' AND updated_at < ?", (now - NEEDS_TTL,))
-    guids = live_guids()
-    if guids is not None:
-        rows = conn.execute("SELECT session_id, iterm_session_id FROM sessions WHERE iterm_session_id != ''").fetchall()
-        dead = [sid for sid, it in rows if it.split(":", 1)[-1] not in guids]
-        if dead:
-            conn.executemany("DELETE FROM sessions WHERE session_id=?", [(s,) for s in dead])
     conn.commit()
+
+
+def prune_dead_tabs(conn):
+    """Drop rows whose iTerm2 tab is gone. Costs one AppleScript round-trip, so
+    it's throttled (called only occasionally, not every refresh)."""
+    guids = live_guids()
+    if guids is None:
+        return
+    rows = conn.execute("SELECT session_id, iterm_session_id FROM sessions WHERE iterm_session_id != ''").fetchall()
+    dead = [sid for sid, it in rows if it.split(":", 1)[-1] not in guids]
+    if dead:
+        conn.executemany("DELETE FROM sessions WHERE session_id=?", [(s,) for s in dead])
+        conn.commit()
 
 
 class Controller(NSObject):
@@ -90,11 +99,15 @@ class Controller(NSObject):
         return self
 
     def refresh_(self, timer):
+        global TICK
+        TICK += 1
         needs = done = 0
         if os.path.exists(DB_PATH):
             conn = sqlite3.connect(DB_PATH, timeout=5.0)
             try:
-                prune(conn)
+                expire_by_time(conn)              # cheap SQL, every 3s
+                if TICK % 10 == 1:                # AppleScript prune ~every 30s (and on start)
+                    prune_dead_tabs(conn)
                 needs = conn.execute("SELECT COUNT(*) FROM sessions WHERE state='needs_input'").fetchone()[0]
                 done = conn.execute("SELECT COUNT(*) FROM sessions WHERE state='done'").fetchone()[0]
             finally:

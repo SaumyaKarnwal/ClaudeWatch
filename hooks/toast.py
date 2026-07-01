@@ -26,7 +26,7 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSObject, NSTimer
 
-ROOT = os.path.expanduser("~/projects/claude-session-inbox")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FOCUS = os.path.join(ROOT, "hooks", "focus_session.py")
 
 SESSION = None  # iTerm2 session id to jump to on click (set from argv)

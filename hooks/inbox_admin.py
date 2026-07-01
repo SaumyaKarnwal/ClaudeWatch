@@ -9,7 +9,7 @@ import os
 import sqlite3
 import sys
 
-DB_PATH = os.path.expanduser("~/projects/claude-session-inbox/inbox.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "inbox.db")
 
 ACTIONS = {
     "clear-finished": "DELETE FROM sessions WHERE state = 'done'",

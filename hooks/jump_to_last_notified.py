@@ -8,7 +8,7 @@ reads the session recorded by notify.py and focuses that iTerm2 tab.
 import os
 import subprocess
 
-ROOT = os.path.expanduser("~/projects/claude-session-inbox")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAST_NOTIFIED = os.path.join(ROOT, ".last_notified")
 FOCUS = os.path.join(ROOT, "hooks", "focus_session.py")
 

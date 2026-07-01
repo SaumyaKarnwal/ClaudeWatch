@@ -23,7 +23,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import notify  # noqa: E402  (sibling module in hooks/)
 
-STORE_DIR = os.path.expanduser("~/projects/claude-session-inbox")
+STORE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(STORE_DIR, "inbox.db")
 
 # Hook kind (argv[1]) -> the state a session enters. `prompt` has no state: it
