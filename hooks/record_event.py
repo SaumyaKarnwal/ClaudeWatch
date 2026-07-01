@@ -71,6 +71,7 @@ def main():
     iterm_session_id = os.environ.get("ITERM_SESSION_ID", "")
     now = int(time.time())
 
+    state_changed = False
     conn = connect()
     try:
         if kind not in KIND_TO_STATE:
@@ -79,6 +80,13 @@ def main():
             conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         else:
             state = KIND_TO_STATE[kind]
+            # Notify only on an actual state TRANSITION. Claude Code can re-emit the
+            # same event while a session keeps waiting; without this we'd re-notify
+            # every time. A repeat (same state) just refreshes the timestamp, silently.
+            row = conn.execute(
+                "SELECT state FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            state_changed = row is None or row[0] != state
             conn.execute(
                 """
                 INSERT INTO sessions
@@ -97,8 +105,8 @@ def main():
     finally:
         conn.close()
 
-    # Alert after the store is consistent. `prompt` clears a row -> nothing to announce.
-    if kind in KIND_TO_STATE:
+    # Alert only when the state actually changed (prompt clears a row -> nothing to announce).
+    if kind in KIND_TO_STATE and state_changed:
         notify.maybe_notify(KIND_TO_STATE[kind], project, iterm_session_id)
 
 
