@@ -1,5 +1,7 @@
 {
   "hotkey": "ctrl - 0x32",
+  "panel_hotkey": "alt - 0x32",
+  "notify_hotkey": "cmd + ctrl - n",
   "notify_on_needs_input": true,
   "notify_on_done": true,
   "suppress_when_focused": true,

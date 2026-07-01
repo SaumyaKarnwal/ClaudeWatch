@@ -20,6 +20,8 @@ ROOT = os.path.dirname(HERE)
 CONFIG_PATH = os.path.join(ROOT, "config.json")
 TOAST = os.path.join(HERE, "toast.py")
 VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")  # has PyObjC
+# Records the session the most recent toast is about, so a hotkey can "click" it.
+LAST_NOTIFIED = os.path.join(ROOT, ".last_notified")
 
 RED = "#FF3B30"
 GREEN = "#34C759"
@@ -89,6 +91,14 @@ def maybe_notify(state, project, iterm_session_id):
         return
     if cfg.get("suppress_when_focused", True) and iterm_session_id and is_focused_on(iterm_session_id):
         return
+
+    # remember which session this toast is about (for the "jump to current
+    # notification" hotkey)
+    try:
+        with open(LAST_NOTIFIED, "w") as f:
+            f.write(iterm_session_id or "")
+    except OSError:
+        pass
 
     # fire the toast on the active screen, detached (must not block the hook)
     try:

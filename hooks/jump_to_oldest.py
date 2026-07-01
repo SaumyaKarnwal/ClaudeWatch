@@ -75,10 +75,12 @@ def main():
         return
 
     here = current_guid()
-    # Prefer the first session that isn't the one we're already on (so repeated
-    # presses advance); if we're not on any of them, that's just the first row.
     targets = [r[0] for r in rows]
-    nxt = next((t for t in targets if t.split(":", 1)[-1] != here), targets[0])
+    guids = [t.split(":", 1)[-1] for t in targets]
+    # Round-robin: advance to the session AFTER the one we're on, wrapping around,
+    # so repeated presses tour ALL sessions instead of ping-ponging between two.
+    # If we're not on any tracked session, start at the first (oldest).
+    nxt = targets[(guids.index(here) + 1) % len(targets)] if here in guids else targets[0]
 
     # explicit interpreter -- skhd runs with a minimal PATH that may lack python3.
     subprocess.run(["/usr/bin/python3", FOCUS, nxt])

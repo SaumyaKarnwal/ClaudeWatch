@@ -148,6 +148,11 @@ class Delegate(NSObject):
 
 def main():
     global SESSIONS, NOW
+    try:
+        with open("/tmp/claude_inbox_panel.log", "a") as f:
+            f.write(f"panel fired {int(time.time())}\n")
+    except OSError:
+        pass
     SESSIONS = load_sessions()
     NOW = int(time.time())
 

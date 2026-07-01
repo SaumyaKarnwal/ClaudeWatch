@@ -9,3 +9,6 @@ inbox.db-shm
 __pycache__/
 *.pyc
 .DS_Store
+
+# last-notified session pointer (runtime state)
+.last_notified

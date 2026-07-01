@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Apply settings -- regenerate the skhd hotkey binding from config.json.
+"""Apply settings -- regenerate the skhd hotkey bindings from config.json.
 
-    apply_config.py                 # rewrite the binding from config.json + reload skhd
-    apply_config.py preset <name>   # set hotkey to a named preset, then apply
-    apply_config.py set "<combo>"   # set hotkey to a raw skhd combo, then apply
-    apply_config.py open            # open config.json in the default text editor
+    apply_config.py                     # rewrite all bindings from config.json + reload
+    apply_config.py set <which> "<combo>"   # set a hotkey (which: jump|panel|notify)
+    apply_config.py open                # open config.json in the default text editor
 
-The binding is written into a *managed block* in ~/.skhdrc so any other skhd
-bindings the user has are left untouched.
+Three actions can be bound (each optional -- leave its config key empty to skip):
+    hotkey         -> jump to next waiting session (round-robin)
+    panel_hotkey   -> open the inbox panel on the active screen
+    notify_hotkey  -> jump to the session the current notification is about
+
+All bindings are written into a *managed block* in ~/.skhdrc; anything you add
+outside that block is left untouched.
 """
 
 import json
@@ -18,15 +22,16 @@ import sys
 
 ROOT = os.path.expanduser("~/projects/claude-session-inbox")
 CONFIG = os.path.join(ROOT, "config.json")
-JUMP = os.path.join(ROOT, "hooks", "jump_to_oldest.py")
 SKHDRC = os.path.expanduser("~/.skhdrc")
 PY = "/usr/bin/python3"
+VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")
 SKHD = "/opt/homebrew/bin/skhd"
 
-PRESETS = {
-    "cmd-ctrl-j": "cmd + ctrl - j",
-    "ctrl-alt-j": "ctrl + alt - j",
-    "cmd-ctrl-space": "cmd + ctrl - space",
+# config key -> the command its hotkey should run
+ACTIONS = {
+    "jump": ("hotkey", f"{PY} {os.path.join(ROOT, 'hooks', 'jump_to_oldest.py')}"),
+    "panel": ("panel_hotkey", f"{VENV_PY} {os.path.join(ROOT, 'hooks', 'panel.py')}"),
+    "notify": ("notify_hotkey", f"{PY} {os.path.join(ROOT, 'hooks', 'jump_to_last_notified.py')}"),
 }
 
 BEGIN = "# >>> claude-session-inbox (managed) >>>"
@@ -42,30 +47,35 @@ def load_config():
         return {}
 
 
-def set_hotkey(combo):
+def set_hotkey(which, combo):
+    key = ACTIONS[which][0]
     cfg = load_config()
-    cfg["hotkey"] = combo
+    cfg[key] = combo
     with open(CONFIG, "w") as f:
         json.dump(cfg, f, indent=2)
         f.write("\n")
 
 
 def apply():
-    combo = load_config().get("hotkey", "cmd + ctrl - j")
-    block = f"{BEGIN}\n{combo} : {PY} {JUMP}\n{END}\n"
+    cfg = load_config()
+    lines = []
+    for _, (key, command) in ACTIONS.items():
+        combo = (cfg.get(key) or "").strip()
+        if combo:
+            lines.append(f"{combo} : {command}")
+    block = f"{BEGIN}\n" + "\n".join(lines) + f"\n{END}\n"
 
     existing = ""
     if os.path.exists(SKHDRC):
         with open(SKHDRC) as f:
             existing = f.read()
-    # drop any prior managed block, keep everything else the user added
     cleaned = MANAGED_RE.sub("", existing).rstrip()
     new = f"{cleaned}\n\n{block}" if cleaned else block
     with open(SKHDRC, "w") as f:
         f.write(new)
 
     subprocess.run([SKHD, "--reload"], capture_output=True)
-    print(f"hotkey applied: {combo}")
+    print("bindings applied:\n  " + "\n  ".join(lines))
 
 
 def main():
@@ -73,14 +83,13 @@ def main():
     if cmd == "open":
         subprocess.run(["open", "-t", CONFIG])
         return
-    if cmd == "preset":
-        name = sys.argv[2] if len(sys.argv) > 2 else ""
-        if name not in PRESETS:
-            print(f"unknown preset: {name!r}", file=sys.stderr)
+    if cmd == "set":
+        which = sys.argv[2] if len(sys.argv) > 2 else ""
+        combo = sys.argv[3] if len(sys.argv) > 3 else ""
+        if which not in ACTIONS:
+            print(f"unknown action: {which!r}; valid: {', '.join(ACTIONS)}", file=sys.stderr)
             sys.exit(1)
-        set_hotkey(PRESETS[name])
-    elif cmd == "set":
-        set_hotkey(sys.argv[2])
+        set_hotkey(which, combo)
     apply()
 
 
