@@ -6,6 +6,9 @@ at — the moment one needs your input or finishes, and lets you jump straight t
 
 Built for **macOS + iTerm2**. Everything runs locally; **nothing leaves your machine**.
 
+📖 **Already installed? See [USAGE.md](USAGE.md)** for how to use it, all the shortcuts,
+and how to change settings.
+
 ---
 
 ## What it does
