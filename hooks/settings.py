@@ -46,14 +46,31 @@ TOGGLES = [
 ]
 SOUNDS = [("sound_needs_input", "Needs-input sound"), ("sound_done", "Finished sound")]
 
+# macOS virtual keycode -> skhd key name. skhd's parser only accepts named keys,
+# alphanumeric literals, and digit-only hex keycodes; a keycode containing a hex
+# letter (a-f) fails to parse and takes the whole ~/.skhdrc down with it. So every
+# non-alphanumeric key we might record must resolve to one of these names (verified
+# against skhd 0.3.9) or be rejected — never emitted as a raw 0x1e-style keycode.
+KEYCODE_TO_SKHD = {
+    36: "return", 48: "tab", 49: "space", 51: "backspace", 53: "escape",
+    114: "insert", 115: "home", 116: "pageup", 117: "delete",
+    119: "end", 121: "pagedown", 123: "left", 124: "right", 125: "down", 126: "up",
+}
+
 RESERVED = {
-    (frozenset({"cmd"}), "0x31"), (frozenset({"ctrl"}), "0x31"), (frozenset({"alt"}), "0x31"),
-    (frozenset({"cmd"}), "0x32"), (frozenset({"cmd"}), "0x30"),
+    (frozenset({"cmd"}), "space"), (frozenset({"ctrl"}), "space"), (frozenset({"alt"}), "space"),
+    (frozenset({"cmd"}), "0x32"), (frozenset({"cmd"}), "tab"),
     (frozenset({"cmd"}), "q"), (frozenset({"cmd"}), "w"),
     (frozenset({"cmd"}), "h"), (frozenset({"cmd"}), "m"),
 }
 MOD_SYMBOL = {"cmd": "⌘", "ctrl": "⌃", "alt": "⌥", "shift": "⇧"}
-KEY_SYMBOL = {"0x31": "Space", "0x32": "`", "0x30": "⇥", "0x24": "⏎"}
+KEY_SYMBOL = {
+    "0x32": "`",
+    "space": "Space", "return": "⏎", "tab": "⇥", "escape": "⎋",
+    "delete": "⌦", "backspace": "⌫", "insert": "Ins",
+    "left": "←", "right": "→", "up": "↑", "down": "↓",
+    "home": "↖", "end": "↘", "pageup": "⇞", "pagedown": "⇟",
+}
 
 RECORDING = None
 WIDGETS = {}
@@ -85,8 +102,15 @@ def event_to_combo(flags, keycode, chars):
         return None, "Use at least one modifier (⌘ ⌃ ⌥)."
     if chars and len(chars) == 1 and chars.isascii() and chars.isalnum():
         key = chars.lower()
+    elif keycode in KEYCODE_TO_SKHD:
+        key = KEYCODE_TO_SKHD[keycode]
     else:
-        key = "0x%x" % keycode
+        code = "0x%x" % keycode
+        # skhd chokes on keycodes with a hex letter — refuse rather than write a line
+        # that would break every binding in the file.
+        if any(c in "abcdef" for c in code[2:]):
+            return None, "That key isn't supported — try a letter, number, Space, Return, or an arrow."
+        key = code
     if (frozenset(mods), key) in RESERVED:
         return None, "macOS already uses that — pick another."
     return " + ".join(mods) + " - " + key, None
