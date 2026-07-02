@@ -116,6 +116,19 @@ def save_config(key, value):
         f.write("\n")
 
 
+def combo_owner(combo, exclude=None):
+    """Return the human label of the shortcut already bound to `combo`, or None.
+
+    Guards against binding two of our own actions to the same keys — skhd would
+    otherwise keep only the last-written duplicate and silently drop the other.
+    """
+    cfg = load_config()
+    for key, label in SHORTCUTS:
+        if key != exclude and cfg.get(key) == combo:
+            return label
+    return None
+
+
 def set_status(text, kind="hint"):
     """Update the status line as a colored pill: error=red+⚠+beep, ok=green+✓, hint=quiet."""
     if kind == "error":
@@ -159,7 +172,16 @@ class RecorderView(NSView):
             set_status(err, "error")
             _stop_recording()
             return
-        subprocess.run([PY, APPLY, "set", RECORDING, combo], capture_output=True)
+        clash = combo_owner(combo, exclude=RECORDING)
+        if clash:
+            set_status(f"Already used for “{clash}”.", "error")
+            _stop_recording()
+            return
+        # Persist via config.json, then regenerate skhd bindings from it. We save
+        # directly (not `apply_config.py set`) because that subcommand keys on action
+        # names (jump/panel/notify), not the config keys we hold here (hotkey/…).
+        save_config(RECORDING, combo)
+        subprocess.run([PY, APPLY], capture_output=True)
         WIDGETS[RECORDING][0].setStringValue_(pretty(combo))  # the row updating is the confirmation
         set_status("Click Record, then press your shortcut.", "hint")
         _stop_recording()
