@@ -97,9 +97,27 @@ installs `skhd` + a local Python env, adds ClaudeWatch's hooks to `~/.claude/set
 shortcuts, and installs the menu-bar app as a login item.
 
 **Then grant the two permissions above** (the installer prints them and opens the right
-Settings pane). That's it — the badge is live.
+Settings pane).
+
+**One step that's easy to miss:** Claude Code loads hooks **when a session starts**, so
+**open a fresh Claude Code session** (or restart the ones you have) for ClaudeWatch to start
+tracking them. Sessions already running before you installed won't be tracked until restarted.
+That's it — the badge is live.
 
 Prerequisites: macOS, iTerm2, Homebrew, Python 3.
+
+### Updating
+
+Pulling new code is **not enough on its own** — the hooks live in `~/.claude/settings.json`,
+not in the repo, so a `git pull` doesn't change what Claude Code runs. After pulling, re-run
+the installer and restart your sessions:
+
+```bash
+git pull
+./install.sh          # idempotent — re-wires the hooks (adds/removes as needed)
+```
+
+Then **restart your Claude Code sessions** so they pick up the hook changes.
 
 ---
 
@@ -177,13 +195,16 @@ settings. Shared tools (`skhd`, iTerm2) stay installed. Delete the folder to rem
 
 ```
 Claude Code hooks  ──►  record_event.py  ──►  inbox.db (SQLite)  ──►  menu-bar app (badge + panel)
- Notification/Stop/       classify state,        one row per            notification (active screen)
- UserPromptSubmit/        capture iTerm2 tab      session needing        CLI (cli/claude-inbox)
+ Notification             classify state,        one row per            notification (active screen)
+ UserPromptSubmit         capture iTerm2 tab      session needing        CLI (cli/claude-inbox)
  SessionEnd               id, decide notify      attention              hotkeys (skhd)
 ```
 
-Everything is decoupled through the local SQLite store: hooks write it; the badge,
-notification, panel, CLI, and shortcuts are all just views over it.
+The two states come from the **Notification** hook: `permission_prompt` → *needs input*,
+`idle_prompt` → *done* (which fires only at true idle, so background subagents don't trigger
+false "done"s). `UserPromptSubmit`/`SessionEnd` clear a session. Everything is decoupled
+through the local SQLite store: hooks write it; the badge, notification, panel, CLI, and
+shortcuts are all just views over it.
 
 ---
 
