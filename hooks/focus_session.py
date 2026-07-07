@@ -1,35 +1,46 @@
 #!/usr/bin/env python3
-"""Deep-link: bring the iTerm2 tab for a given session to the front.
+"""Deep-link: bring the iTerm2 tab for a given session to the front, across Spaces.
 
-Usage:
-    focus_session.py <ITERM_SESSION_ID>
+Selects the target session (by GUID) and activates iTerm. Crossing to another
+desktop (Space) can need a SECOND `activate`: the first one only grabs whatever
+iTerm window is on your current desktop, and by then `select` has made the target
+the current window internally, so a second activate -- iTerm already frontmost --
+follows that selection across.
 
-Accepts either the full ITERM_SESSION_ID ("w0t1p0:GUID") or just the GUID.
-iTerm2 exposes each session's GUID as the AppleScript variable "session.id",
-which matches the GUID portion of ITERM_SESSION_ID -- that's the join key.
-Exits 0 if the session was found and focused, 1 otherwise.
+But that second activate re-focuses iTerm, and if you've since moved it re-grabs
+focus on the new desktop. So we only do it when the first pass did NOT already
+land on the target's desktop (i.e. a same-desktop jump, or a cross where iTerm had
+no local window to capture the first activate, both need just one). System Events
+lists only current-desktop windows, so "is the target window visible now?" tells
+us whether we already landed.
+
+Usage: focus_session.py <ITERM_SESSION_ID>   (full "wNtNpN:GUID" or bare GUID)
 """
 
 import subprocess
 import sys
 import time
 
-APPLESCRIPT = '''
+# Select the session's window/tab, activate iTerm, and return the window's
+# "<left> <top>" (so we can tell whether we landed on its desktop). "notfound" if
+# no session matches.
+SELECT_AND_ACTIVATE = '''
 on run argv
     set targetId to item 1 of argv
     tell application "iTerm2"
         repeat with aWindow in windows
             repeat with aTab in tabs of aWindow
                 repeat with aSession in sessions of aTab
-                    -- the `tell ... to (variable named ...)` form works inside a
-                    -- loop; the `variable named X of aSession` form errors -1723.
+                    -- `tell ... to (variable named ...)` works in the loop;
+                    -- `variable named X of aSession` errors -1723.
                     tell aSession to set sid to (variable named "session.id")
                     if sid is targetId then
                         select aWindow
                         select aTab
                         tell aSession to select
                         activate
-                        return "ok"
+                        set b to bounds of aWindow
+                        return (item 1 of b as string) & " " & (item 2 of b as string)
                     end if
                 end repeat
             end repeat
@@ -39,40 +50,55 @@ on run argv
 end run
 '''
 
+# System Events only lists windows on the CURRENT desktop, so "is an iTerm window
+# at (left, top) visible right now?" answers "are we already on the target's
+# desktop?" Small tolerance (<=3px): iTerm bounds vs the OS position can differ ~1px.
+ON_CURRENT_DESKTOP = '''
+on run argv
+    set L to (item 1 of argv) as integer
+    set T to (item 2 of argv) as integer
+    tell application "System Events" to tell process "iTerm2"
+        repeat with w in windows
+            set p to position of w
+            if (((item 1 of p) - L) ^ 2 + ((item 2 of p) - T) ^ 2) <= 9 then return "yes"
+        end repeat
+    end tell
+    return "no"
+end run
+'''
+
+
+def osascript(script, *args):
+    return subprocess.run(
+        ["osascript", "-e", script, *args], capture_output=True, text=True
+    )
+
 
 def main():
     if len(sys.argv) < 2 or not sys.argv[1]:
         print("usage: focus_session.py <ITERM_SESSION_ID>", file=sys.stderr)
         sys.exit(1)
-
-    # ITERM_SESSION_ID is "w0t1p0:GUID"; the AppleScript variable is just the GUID.
+    # ITERM_SESSION_ID is "wNtNpN:GUID"; the AppleScript variable is just the GUID.
     guid = sys.argv[1].split(":", 1)[-1]
 
-    def jump():
-        return subprocess.run(
-            ["osascript", "-e", APPLESCRIPT, guid], capture_output=True, text=True
-        )
-
-    # Double-activate to cross desktops (Spaces): the FIRST `activate` just grabs
-    # whatever iTerm window is on the current desktop (it "captures" the activate).
-    # By then `select` has made the target the current window internally, so the
-    # SECOND pass -- iTerm now already frontmost -- follows that selection to its
-    # desktop. This mirrors the manual "click the notification twice" behavior and
-    # needs no iTerm API. If once already lands right (no local iTerm window), the
-    # second pass is a harmless no-op.
-    #
-    # This leans on undocumented `activate` behavior + a timing gap. If it ever
-    # turns flaky, the deterministic fallback is iTerm2's Python API:
-    # `session.async_activate(select_tab=True, order_window_front=True)` orders the
-    # specific window front by id in one call (needs "Enable Python API" + the
-    # iterm2 pip package).
-    result = jump()
-    output = (result.stdout or result.stderr).strip()
-    if output != "ok":
+    # Pass 1: select the target + activate. Grabs the local-desktop window if there
+    # is one; otherwise it already crosses.
+    output = (osascript(SELECT_AND_ACTIVATE, guid).stdout or "").strip()
+    parts = output.split()
+    if output == "notfound" or len(parts) != 2:
         print(f"could not focus session {guid}: {output}", file=sys.stderr)
         sys.exit(1)
-    time.sleep(0.4)
-    jump()
+    left, top = parts
+
+    # Did pass 1 land us on the target's desktop? If the target window is visible on
+    # the current desktop now, yes -> done, no second activate (so we don't re-grab
+    # focus). If not, a local window captured the first activate -> do the second
+    # activate to follow the selection across. On any error we fall back to doing
+    # the second pass (the old always-double behavior), which is never worse.
+    on_desktop = (osascript(ON_CURRENT_DESKTOP, left, top).stdout or "").strip()
+    if on_desktop != "yes":
+        time.sleep(0.4)
+        osascript(SELECT_AND_ACTIVATE, guid)
     sys.exit(0)
 
 
