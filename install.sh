@@ -53,13 +53,18 @@ except (OSError, ValueError):
     cfg = {}
 hooks = cfg.setdefault("hooks", {})
 
-# (event, matcher-or-None, record_event arg). Two Notification matchers:
-#   permission_prompt -> needs_input ;  idle_prompt -> done (the true-idle signal).
+# (event, matcher-or-None, record_event arg).
+#   Notification+permission_prompt -> needs_input (ping every time)
+#   Notification+idle_prompt       -> done (the true-idle signal)
+#   PostToolUse                    -> clear a needs_input row (you answered a
+#                                     permission/question and a tool ran)
+#   UserPromptSubmit / SessionEnd  -> clear
 # We deliberately do NOT hook Stop: it fires at every turn boundary (incl. while
 # background subagents run), which caused repeated false "done"s.
 SPECS = [
     ("Notification", "permission_prompt", "notification"),
     ("Notification", "idle_prompt", "idle"),
+    ("PostToolUse", None, "posttooluse"),
     ("UserPromptSubmit", None, "prompt"),
     ("SessionEnd", None, "session_end"),
 ]
