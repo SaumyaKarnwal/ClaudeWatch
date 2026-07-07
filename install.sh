@@ -52,21 +52,35 @@ try:
 except (OSError, ValueError):
     cfg = {}
 hooks = cfg.setdefault("hooks", {})
-events = {"Notification": "notification", "Stop": "stop",
-          "UserPromptSubmit": "prompt", "SessionEnd": "session_end"}
-for event, arg in events.items():
-    cmd = f"/usr/bin/python3 {root}/hooks/record_event.py {arg}"
-    arr = hooks.setdefault(event, [])
-    # drop any prior ClaudeWatch entry (idempotent / path-refresh), keep the rest
-    arr = [e for e in arr if "record_event.py" not in json.dumps(e)]
-    entry = {"hooks": [{"type": "command", "command": cmd}]}
-    if event == "Notification":
-        entry = {"matcher": "permission_prompt", **entry}  # only permission prompts -> needs-input; ignore idle_prompt
-    arr.append(entry)
-    hooks[event] = arr
+
+# (event, matcher-or-None, record_event arg). Two Notification matchers:
+#   permission_prompt -> needs_input ;  idle_prompt -> done (the true-idle signal).
+# We deliberately do NOT hook Stop: it fires at every turn boundary (incl. while
+# background subagents run), which caused repeated false "done"s.
+SPECS = [
+    ("Notification", "permission_prompt", "notification"),
+    ("Notification", "idle_prompt", "idle"),
+    ("UserPromptSubmit", None, "prompt"),
+    ("SessionEnd", None, "session_end"),
+]
+managed = {e for e, _, _ in SPECS}
+# Strip prior ClaudeWatch entries everywhere we manage -- incl. a stale `Stop`
+# hook from an older install -- keeping any non-ClaudeWatch hooks intact.
+for event in managed | {"Stop"}:
+    if event in hooks:
+        remaining = [e for e in hooks[event] if "record_event.py" not in json.dumps(e)]
+        if remaining:
+            hooks[event] = remaining
+        else:
+            del hooks[event]
+for event, matcher, arg in SPECS:
+    entry = {"hooks": [{"type": "command", "command": f"/usr/bin/python3 {root}/hooks/record_event.py {arg}"}]}
+    if matcher:
+        entry = {"matcher": matcher, **entry}
+    hooks.setdefault(event, []).append(entry)
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2); f.write("\n")
-print("  hooks: Notification, Stop, UserPromptSubmit, SessionEnd")
+print("  hooks: Notification(permission_prompt->needs_input, idle_prompt->done), UserPromptSubmit, SessionEnd (Stop dropped)")
 PY
 ok "hooks wired (existing settings preserved; backup saved)"
 
