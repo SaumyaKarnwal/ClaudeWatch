@@ -12,6 +12,7 @@ Exits 0 if the session was found and focused, 1 otherwise.
 
 import subprocess
 import sys
+import time
 
 APPLESCRIPT = '''
 on run argv
@@ -47,16 +48,32 @@ def main():
     # ITERM_SESSION_ID is "w0t1p0:GUID"; the AppleScript variable is just the GUID.
     guid = sys.argv[1].split(":", 1)[-1]
 
-    result = subprocess.run(
-        ["osascript", "-e", APPLESCRIPT, guid],
-        capture_output=True,
-        text=True,
-    )
+    def jump():
+        return subprocess.run(
+            ["osascript", "-e", APPLESCRIPT, guid], capture_output=True, text=True
+        )
+
+    # Double-activate to cross desktops (Spaces): the FIRST `activate` just grabs
+    # whatever iTerm window is on the current desktop (it "captures" the activate).
+    # By then `select` has made the target the current window internally, so the
+    # SECOND pass -- iTerm now already frontmost -- follows that selection to its
+    # desktop. This mirrors the manual "click the notification twice" behavior and
+    # needs no iTerm API. If once already lands right (no local iTerm window), the
+    # second pass is a harmless no-op.
+    #
+    # This leans on undocumented `activate` behavior + a timing gap. If it ever
+    # turns flaky, the deterministic fallback is iTerm2's Python API:
+    # `session.async_activate(select_tab=True, order_window_front=True)` orders the
+    # specific window front by id in one call (needs "Enable Python API" + the
+    # iterm2 pip package).
+    result = jump()
     output = (result.stdout or result.stderr).strip()
-    if output == "ok":
-        sys.exit(0)
-    print(f"could not focus session {guid}: {output}", file=sys.stderr)
-    sys.exit(1)
+    if output != "ok":
+        print(f"could not focus session {guid}: {output}", file=sys.stderr)
+        sys.exit(1)
+    time.sleep(0.4)
+    jump()
+    sys.exit(0)
 
 
 if __name__ == "__main__":
